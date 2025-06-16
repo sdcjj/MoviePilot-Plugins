@@ -251,7 +251,7 @@ class GreenLeaf(_PluginBase):
                                             "chips": True,
                                             "multiple": True,
                                             "model": "seeddownloaders",
-                                            "label": "指定下载器",
+                                            "label": "按下载器辅种",
                                             "items": [
                                                 {
                                                     "title": config.name,
@@ -278,7 +278,7 @@ class GreenLeaf(_PluginBase):
                                         "component": "VTextField",
                                         "props": {
                                             "model": "seedpath",
-                                            "label": "指定目录",
+                                            "label": "按目录辅种",
                                             "placeholder": "媒体文件所在路径,适合种子已删除的场景",
                                         },
                                     }
