@@ -55,6 +55,7 @@ class GreenLeaf(_PluginBase):
     _torrent_data = {}
     _error_caches = []
     _success_caches = []
+    _seed_downloaders = []
 
     def init_plugin(self, config: dict = None):
         """初始化"""
@@ -70,6 +71,7 @@ class GreenLeaf(_PluginBase):
             self._default_downloader = config.get("defaultdownloader")
             self._match_torrent_id_col = config.get("matchtorrentidcol")
             self._seed_delay = config.get("seeddelay")
+            self._seed_downloaders = config.get("seeddownloaders")
 
         if not self._enabled:
             self._torrent_data.clear()
@@ -244,6 +246,35 @@ class GreenLeaf(_PluginBase):
                                 "props": {"cols": 12, "md": 6},
                                 "content": [
                                     {
+                                        "component": "VSelect",
+                                        "props": {
+                                            "chips": True,
+                                            "multiple": True,
+                                            "model": "seeddownloaders",
+                                            "label": "指定下载器",
+                                            "items": [
+                                                {
+                                                    "title": config.name,
+                                                    "value": config.name,
+                                                }
+                                                for config in DownloaderHelper()
+                                                .get_configs()
+                                                .values()
+                                            ],
+                                        },
+                                    }
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
+                                    {
                                         "component": "VTextField",
                                         "props": {
                                             "model": "seedpath",
@@ -305,6 +336,7 @@ class GreenLeaf(_PluginBase):
             "seedpathreplace": "",
             "matchtorrentidcol": "torrent_id_1",
             "seeddelay": 5,
+            "seeddownloaders": "",
         }
 
     def get_page(self) -> List[dict]:
@@ -324,41 +356,45 @@ class GreenLeaf(_PluginBase):
     def __seed_torrents(self):
         """辅种总入口"""
         logger.info("__seed_torrents 开始辅种")
-        # try:
-        #     qb_downloaders = self._downloader_helper.get_services(
-        #         type_filter="qbittorrent"
-        #     )
-        #     for downloader in qb_downloaders:
-        #         inst = self._downloader_helper.get_service(name=downloader)
-        #         torrs = inst.instance.get_completed_torrents()
-        #         for torrent in torrs:
-        #             self.__seed_torrent(
-        #                 downloader,
-        #                 torrent.get("name"),
-        #                 torrent.get("save_path"),
-        #                 [torrent.get("tracker")],
-        #             )
-        #         logger.info(f"qb  完毕 {len(torrs)}")
-        # except Exception as e:
-        #     logger.error("qb 辅种失败", e)
+        try:
+            qb_downloaders = self._downloader_helper.get_services(
+                type_filter="qbittorrent"
+            )
+            for downloader in qb_downloaders:
+                if downloader not in self._seed_downloaders:
+                    continue
+                inst = self._downloader_helper.get_service(name=downloader)
+                torrs = inst.instance.get_completed_torrents()
+                for torrent in torrs:
+                    self.__seed_torrent(
+                        downloader,
+                        torrent.get("name"),
+                        torrent.get("save_path"),
+                        [torrent.get("tracker")],
+                    )
+                logger.info(f"qb  完毕 {len(torrs)}")
+        except Exception as e:
+            logger.error("qb 辅种失败", e)
 
-        # try:
-        #     tr_downloaders = self._downloader_helper.get_services(
-        #         type_filter="transmission"
-        #     )
-        #     for downloader in tr_downloaders:
-        #         inst = self._downloader_helper.get_service(name=downloader)
-        #         torrs = inst.instance.get_completed_torrents()
-        #         for torrent in torrs:
-        #             self.__seed_torrent(
-        #                 downloader,
-        #                 torrent.name,
-        #                 torrent.download_dir,
-        #                 torrent.tracker_list,
-        #             )
-        #         logger.debug(f"tr  完毕 {len(torrs)}")
-        # except Exception as e:
-        #     logger.error("tr 辅种失败", e)
+        try:
+            tr_downloaders = self._downloader_helper.get_services(
+                type_filter="transmission"
+            )
+            for downloader in tr_downloaders:
+                if downloader not in self._seed_downloaders:
+                    continue
+                inst = self._downloader_helper.get_service(name=downloader)
+                torrs = inst.instance.get_completed_torrents()
+                for torrent in torrs:
+                    self.__seed_torrent(
+                        downloader,
+                        torrent.name,
+                        torrent.download_dir,
+                        torrent.tracker_list,
+                    )
+                logger.debug(f"tr  完毕 {len(torrs)}")
+        except Exception as e:
+            logger.error("tr 辅种失败", e)
 
         try:
             self.__seed_torrents_path()
