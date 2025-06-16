@@ -1018,5 +1018,18 @@
     "history": {
       "v1.3": "消息限流发送，以缓解IYUU服务器压力"
     }
+  },
+  "GreenLeaf": {
+      "name": "绿叶辅种插件",
+      "description": "让绿叶生长",
+      "labels": "辅种",
+      "version": "1.1.1",
+      "icon": "Vscode_A.png",
+      "author": "xingxing",
+      "level": 2,
+      "v2":true,
+      "history": {
+          "v1.0.0": "绿叶辅种插件 v1"
+      }
   }
 }
