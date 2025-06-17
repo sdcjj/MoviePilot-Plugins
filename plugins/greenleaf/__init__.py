@@ -4,6 +4,7 @@ from pathlib import Path
 import threading
 import time
 from typing import List, Tuple, Dict, Any
+from urllib.parse import urlparse
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -13,6 +14,8 @@ from app.log import logger
 from app.plugins import _PluginBase
 from app.schemas import NotificationType
 from helper.downloader import DownloaderHelper
+from transmission_rpc import Client as TransmissionClient
+from qbittorrentapi import Client as QbittorrentClient
 
 lock = threading.Lock()
 
@@ -25,7 +28,7 @@ class GreenLeaf(_PluginBase):
     # 插件图标
     plugin_icon = "Vscode_A.png"
     # 插件版本
-    plugin_version = "1.1.1"
+    plugin_version = "1.1.2"
     # 插件作者
     plugin_author = "xingxing"
     # 作者主页
@@ -54,7 +57,7 @@ class GreenLeaf(_PluginBase):
     _data_file = "torrent_data.csv"
     _torrent_data = {}
     _error_caches = []
-    _success_caches = []
+    _success_caches = set()
     _seed_downloaders = []
 
     def init_plugin(self, config: dict = None):
@@ -82,6 +85,7 @@ class GreenLeaf(_PluginBase):
         self._downloader_helper = DownloaderHelper()
         if self._enabled and self.get_state():
             self.__load_torrent_data()
+            self.__init_success_caches()
 
     def get_state(self) -> bool:
         if self._enabled and self._cron and self._seed_domain and self._seed_passkey:
@@ -489,7 +493,7 @@ class GreenLeaf(_PluginBase):
             logger.info(f"种子推送失败 下载器：{downloader} 种子{id}")
         else:
             self._seed_count = self._seed_count + 1
-            self._success_caches.append(id)
+            self._success_caches.add(id)
             logger.info(f"种子推送成功 下载器：{downloader} 种子{id}")
 
     def __load_torrent_data(self):
@@ -559,3 +563,62 @@ class GreenLeaf(_PluginBase):
             logger.warning(f"扫描目录 {dir_path} 时出错: {e}")
 
         return total_size, file_count
+
+    def __init_success_caches(self):
+        logger.info("初始化辅种缓存")
+        try:
+            qb_downloaders = self._downloader_helper.get_services(
+                type_filter="qbittorrent"
+            )
+            for downloader in qb_downloaders:
+                inst = self._downloader_helper.get_service(name=downloader)
+                inst_config = inst.config.config
+                client = QbittorrentClient(
+                    host=inst_config.get("host"),
+                    username=inst_config.get("username"),
+                    password=inst_config.get("password"),
+                )
+                torrs = client.torrents_info()
+                for torrent in torrs:
+                    self.__check_add_success_caches(
+                        [torrent.get("tracker")], torrent.properties.get("comment")
+                    )
+        except Exception as e:
+            logger.error("qb 初始化辅种缓存 失败", e)
+
+        try:
+            tr_downloaders = self._downloader_helper.get_services(
+                type_filter="transmission"
+            )
+            for downloader in tr_downloaders:
+                inst = self._downloader_helper.get_service(name=downloader)
+                inst_config = inst.config.config
+                host_config = inst_config.get("host")
+                parsed_url = urlparse(host_config)
+                client = TransmissionClient(
+                    host=parsed_url.hostname,
+                    port=parsed_url.port,
+                    username=inst_config.get("username"),
+                    password=inst_config.get("password"),
+                )
+                list = client.get_torrents()
+                for tr in list:
+                    self.__check_add_success_caches(tr.tracker_list, tr.comment)
+        except Exception as e:
+            logger.error("tr 初始化辅种缓存 失败", e)
+
+        logger.info(f"初始化辅种缓存完毕 共缓存{len(self._success_caches)} 条数据")
+
+    def __check_add_success_caches(self, tracker_list, comment):
+        try:
+            if not tracker_list:
+                return
+            if not comment:
+                return
+            if "id=" not in comment:
+                return
+            if self.__check_self_tracker(tracker_list):
+                id = comment.split("id=")[1]
+                self._success_caches.add(id)
+        except Exception as e:
+            logger.error("检查缓失败", comment, str(e))
