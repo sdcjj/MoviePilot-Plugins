@@ -1023,13 +1023,16 @@
       "name": "绿叶辅种插件",
       "description": "让绿叶生长",
       "labels": "辅种",
-      "version": "1.1.2",
+      "version": "1.1.3",
       "icon": "Vscode_A.png",
       "author": "xingxing",
       "level": 2,
       "v2":true,
       "history": {
-          "v1.0.0": "绿叶辅种插件 v1"
+          "v1.0.0": "绿叶辅种插件 v0",
+          "v1.0.1": "绿叶辅种插件 v1",
+          "v1.0.2": "绿叶辅种插件 v2",
+          "v1.0.3": "适配新站点，更新辅种数据源"
       }
   }
 }

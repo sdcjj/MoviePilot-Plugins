@@ -28,7 +28,7 @@ class GreenLeaf(_PluginBase):
     # 插件图标
     plugin_icon = "Vscode_A.png"
     # 插件版本
-    plugin_version = "1.1.2"
+    plugin_version = "1.1.3"
     # 插件作者
     plugin_author = "xingxing"
     # 作者主页
@@ -54,7 +54,6 @@ class GreenLeaf(_PluginBase):
     _seed_count = 0
     _seed_delay = 5
     _torr_suff = ["-RL", "-RL4B"]
-    _data_file = "torrent_data.csv"
     _torrent_data = {}
     _error_caches = []
     _success_caches = set()
@@ -80,15 +79,30 @@ class GreenLeaf(_PluginBase):
             self._torrent_data.clear()
             self._error_caches.clear()
             self._success_caches.clear()
+            logger.info("停用 GreenLeaf 完毕")
             return
 
         self._downloader_helper = DownloaderHelper()
         if self._enabled and self.get_state():
-            self.__load_torrent_data()
-            self.__init_success_caches()
+            try:
+                self._torrent_data.clear()
+                self._error_caches.clear()
+                self._success_caches.clear()
+                self.__load_torrent_data()
+                self.__init_success_caches()
+                logger.info("初始化 GreenLeaf 完毕 等待定时任务执行")
+            except Exception as e:
+                logger.error(f"初始化 GreenLeaf 失败：{str(e)}")
+                self._enabled = False
 
     def get_state(self) -> bool:
-        if self._enabled and self._cron and self._seed_domain and self._seed_passkey:
+        if (
+            self._enabled
+            and self._cron
+            and self._seed_domain
+            and self._seed_passkey
+            and self._match_torrent_id_col
+        ):
             return True
         else:
             return False
@@ -185,8 +199,8 @@ class GreenLeaf(_PluginBase):
                                         "props": {
                                             "min": "1",
                                             "model": "seeddelay",
-                                            "label": "执行间隔(秒)",
-                                            "placeholder": "执行间隔",
+                                            "label": "辅种间隔(秒)",
+                                            "placeholder": "辅种间隔",
                                         },
                                     }
                                 ],
@@ -234,8 +248,8 @@ class GreenLeaf(_PluginBase):
                                             "chips": True,
                                             "multiple": False,
                                             "model": "matchtorrentidcol",
-                                            "label": "辅种站点匹配的种子列",
-                                            "items": ["torrent_id_1"],
+                                            "label": "辅种站点的关键字",
+                                            "items": ["torrent_id_1", "torrent_id_2"],
                                         },
                                     }
                                 ],
@@ -338,7 +352,7 @@ class GreenLeaf(_PluginBase):
             "seedpasskey": "",
             "seedpath": "",
             "seedpathreplace": "",
-            "matchtorrentidcol": "torrent_id_1",
+            "matchtorrentidcol": "",
             "seeddelay": 5,
             "seeddownloaders": "",
         }
@@ -354,8 +368,9 @@ class GreenLeaf(_PluginBase):
             self._torrent_data.clear()
             self._error_caches.clear()
             self._success_caches.clear()
+            logger.info("停止 GreenLeaf 完毕")
         except Exception as e:
-            logger.error("stop_service", e)
+            logger.error(f"stop_service error {str(e)}")
 
     def __seed_torrents(self):
         """辅种总入口"""
@@ -378,7 +393,7 @@ class GreenLeaf(_PluginBase):
                     )
                 logger.info(f"qb  完毕 {len(torrs)}")
         except Exception as e:
-            logger.error("qb 辅种失败", e)
+            logger.error(f"qb 辅种失败 {str(e)}")
 
         try:
             tr_downloaders = self._downloader_helper.get_services(
@@ -398,15 +413,15 @@ class GreenLeaf(_PluginBase):
                     )
                 logger.debug(f"tr  完毕 {len(torrs)}")
         except Exception as e:
-            logger.error("tr 辅种失败", e)
+            logger.error(f"tr 辅种失败 {str(e)}")
 
         try:
             self.__seed_torrents_path()
         except Exception as e:
-            logger.error("path 辅种失败", e)
+            logger.error(f"根据文件路径辅种 辅种失败 {str(e)}")
 
         logger.info(
-            f"__seed_torrents 辅种完毕 共辅种:{self._seed_count} {self._error_caches}"
+            f"__seed_torrents 辅种完毕 共辅种:{self._seed_count} 辅种失败:{self._error_caches}"
         )
 
     def __check_self_tracker(self, tracker_list):
@@ -425,12 +440,12 @@ class GreenLeaf(_PluginBase):
             return
         if not os.path.exists(self._seed_path):
             return
-        logger.debug(f"path 开始")
+        logger.debug(f"根据文件路径 开始")
         for root, dirs, files in os.walk(self._seed_path):
             for dir_name in dirs:
                 self.__seed_torrent(None, dir_name, root, None, True)
 
-        logger.debug(f"path  完毕")
+        logger.debug(f"根据文件路径  完毕")
 
     def __seed_torrent(self, downloader, name, path, track_list, check_file=False):
         """根据名称和路径辅种"""
@@ -447,10 +462,11 @@ class GreenLeaf(_PluginBase):
                 return
 
             seed_path = path
-            if name in self._torrent_data:
-                torrent_info = self._torrent_data[name]
+            size, file_count = self.__get_directory_info(path)
+            name_key = f"{name}_{file_count}"
+            if name_key in self._torrent_data:
+                torrent_info = self._torrent_data[name_key]
                 if check_file:
-                    size, file_count = self.__get_directory_info(path)
                     file_count_match = file_count == torrent_info["file_count"]
                     size_tolerance = max(torrent_info["size"] * 0.01, 1024 * 1024)
                     size_match = abs(size - torrent_info["size"]) <= size_tolerance
@@ -463,7 +479,7 @@ class GreenLeaf(_PluginBase):
                         split_array = self._seed_path_replace.split("|")
                         seed_path = seed_path.replace(split_array[0], split_array[1])
                 self.__seed_red_torrents_by_downloader(
-                    downloader, torrent_info[self._match_torrent_id_col], seed_path
+                    downloader, torrent_info["torrent_id"], seed_path
                 )
                 time.sleep(self._seed_delay)
             else:
@@ -498,8 +514,11 @@ class GreenLeaf(_PluginBase):
 
     def __load_torrent_data(self):
         """加载种子数据"""
+
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        data_path = os.path.join(current_dir, self._data_file)
+        data_path = os.path.join(
+            current_dir, f"torrent_data_{self._match_torrent_id_col}.csv"
+        )
         # 检查文件是否存在
         if not os.path.exists(data_path):
             logger.error(f"数据文件不存在: {data_path}")
@@ -516,19 +535,19 @@ class GreenLeaf(_PluginBase):
             for row in reader:
                 try:
                     # 使用原始列名获取数据
-                    name = row["\ufeffname"].strip()
+                    name = row["name"].strip()
                     if not name:  # 跳过空行
                         continue
 
                     # 处理可能为空的字段
                     size_str = row["size"].strip()
                     file_count_str = row["file_count"].strip()
-                    torrent_id_1_str = row["torrent_id_1"].strip()
+                    torrent_id_str = row["torrent_id"].strip()
 
-                    self._torrent_data[name] = {
+                    self._torrent_data[f"{name}_{file_count_str}"] = {
                         "size": int(size_str) if size_str else 0,
                         "file_count": int(file_count_str) if file_count_str else 0,
-                        "torrent_id_1": torrent_id_1_str if torrent_id_1_str else "",
+                        "torrent_id": torrent_id_str if torrent_id_str else "",
                     }
                     row_count += 1
 
@@ -584,7 +603,7 @@ class GreenLeaf(_PluginBase):
                         [torrent.get("tracker")], torrent.properties.get("comment")
                     )
         except Exception as e:
-            logger.error("qb 初始化辅种缓存 失败", e)
+            logger.error(f"qb 初始化辅种缓存 失败 {str(e)}")
 
         try:
             tr_downloaders = self._downloader_helper.get_services(
@@ -605,7 +624,7 @@ class GreenLeaf(_PluginBase):
                 for tr in list:
                     self.__check_add_success_caches(tr.tracker_list, tr.comment)
         except Exception as e:
-            logger.error("tr 初始化辅种缓存 失败", e)
+            logger.error(f"tr 初始化辅种缓存 失败 {str(e)}")
 
         logger.info(f"初始化辅种缓存完毕 共缓存{len(self._success_caches)} 条数据")
 
@@ -617,8 +636,8 @@ class GreenLeaf(_PluginBase):
                 return
             if "id=" not in comment:
                 return
-            if self.__check_self_tracker(tracker_list):
+            if self._seed_domain in comment or self.__check_self_tracker(tracker_list):
                 id = comment.split("id=")[1]
                 self._success_caches.add(id)
         except Exception as e:
-            logger.error("检查缓失败", comment, str(e))
+            logger.error(f"检查缓失败 {comment} {str(e)}")
