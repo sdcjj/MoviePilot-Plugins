@@ -1,4 +1,4 @@
-import csv
+import pandas as pd
 import os
 from pathlib import Path
 import threading
@@ -28,7 +28,7 @@ class GreenLeaf(_PluginBase):
     # 插件图标
     plugin_icon = "Vscode_A.png"
     # 插件版本
-    plugin_version = "1.1.3"
+    plugin_version = "1.1.4"
     # 插件作者
     plugin_author = "xingxing"
     # 作者主页
@@ -249,7 +249,11 @@ class GreenLeaf(_PluginBase):
                                             "multiple": False,
                                             "model": "matchtorrentidcol",
                                             "label": "辅种站点的关键字",
-                                            "items": ["torrent_id_1", "torrent_id_2"],
+                                            "items": [
+                                                "torrent_id_1",
+                                                "torrent_id_2",
+                                                "torrent_id_3",
+                                            ],
                                         },
                                     }
                                 ],
@@ -517,7 +521,7 @@ class GreenLeaf(_PluginBase):
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
         data_path = os.path.join(
-            current_dir, f"torrent_data_{self._match_torrent_id_col}.csv"
+            current_dir, f"torrent_data_{self._match_torrent_id_col}.xlsx"
         )
         # 检查文件是否存在
         if not os.path.exists(data_path):
@@ -526,35 +530,25 @@ class GreenLeaf(_PluginBase):
 
         logger.info(f"正在加载数据文件: {data_path}")
 
-        # 重新打开文件进行正式读取
-        with open(data_path, "r", encoding="utf-8") as f:
-            # 尝试不同的分隔符
-            reader = csv.DictReader(f, delimiter=",")
-            # 读取数据
-            row_count = 0
-            for row in reader:
-                try:
-                    # 使用原始列名获取数据
-                    name = row["name"].strip()
-                    if not name:  # 跳过空行
-                        continue
-
-                    # 处理可能为空的字段
-                    size_str = row["size"].strip()
-                    file_count_str = row["file_count"].strip()
-                    torrent_id_str = row["torrent_id"].strip()
-
-                    self._torrent_data[f"{name}_{file_count_str}"] = {
-                        "size": int(size_str) if size_str else 0,
-                        "file_count": int(file_count_str) if file_count_str else 0,
-                        "torrent_id": torrent_id_str if torrent_id_str else "",
-                    }
-                    row_count += 1
-
-                except Exception as e:
-                    logger.warning(f"处理第{row_count+2}行数据时出错: {row} {e}")
-
-            logger.info(f"成功加载 {len(self._torrent_data)} 条种子数据")
+        df = pd.read_excel(data_path, sheet_name="Sheet1")
+        row_count = 0
+        for index, row in df.iterrows():
+            try:
+                name = row["name"].strip()
+                if not name:  # 跳过空行
+                    continue
+                size_str = row["size"]
+                file_count_str = row["file_count"]
+                torrent_id_str = str(row["torrent_id"])
+                self._torrent_data[f"{name}_{file_count_str}"] = {
+                    "size": size_str if size_str else 0,
+                    "file_count": file_count_str if file_count_str else 0,
+                    "torrent_id": torrent_id_str if torrent_id_str else "",
+                }
+                row_count += 1
+            except Exception as e:
+                logger.warning(f"处理第{row_count}行数据时出错: {row} {e}")
+        logger.info(f"成功加载 {len(self._torrent_data)} 条种子数据")
 
     def __get_directory_info(self, dir_path: Path) -> Tuple[int, int]:
         """
