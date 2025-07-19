@@ -1,5 +1,5 @@
-pandas==2.3.1
 urllib3==2.4.0
 transmission-rpc==4.3.1
 qbittorrent-api==2024.11.70
-openpyxl==3.1.5
+pyunpack==0.2
+patool==1.12

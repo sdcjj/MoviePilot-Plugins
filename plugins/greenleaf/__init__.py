@@ -1,10 +1,12 @@
-import pandas as pd
+import csv
+from pyunpack import Archive
 import os
 from pathlib import Path
 import threading
 import time
 from typing import List, Tuple, Dict, Any
 from urllib.parse import urlparse
+import traceback
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -28,7 +30,7 @@ class GreenLeaf(_PluginBase):
     # 插件图标
     plugin_icon = "Vscode_A.png"
     # 插件版本
-    plugin_version = "1.1.4"
+    plugin_version = "1.1.5"
     # 插件作者
     plugin_author = "xingxing"
     # 作者主页
@@ -92,7 +94,9 @@ class GreenLeaf(_PluginBase):
                 self.__init_success_caches()
                 logger.info("初始化 GreenLeaf 完毕 等待定时任务执行")
             except Exception as e:
-                logger.error(f"初始化 GreenLeaf 失败：{str(e)}")
+                logger.error(
+                    f"初始化 GreenLeaf 失败：{str(e)} 堆栈信息：{traceback.format_exc()}"
+                )
                 self._enabled = False
 
     def get_state(self) -> bool:
@@ -521,33 +525,41 @@ class GreenLeaf(_PluginBase):
 
         current_dir = os.path.dirname(os.path.abspath(__file__))
         data_path = os.path.join(
-            current_dir, f"torrent_data_{self._match_torrent_id_col}.xlsx"
+            current_dir, f"torrent_data_{self._match_torrent_id_col}.csv"
         )
         # 检查文件是否存在
-        if not os.path.exists(data_path):
+        if not self.__data_file_exist():
             logger.error(f"数据文件不存在: {data_path}")
             return
 
         logger.info(f"正在加载数据文件: {data_path}")
 
-        df = pd.read_excel(data_path, sheet_name="Sheet1")
         row_count = 0
-        for index, row in df.iterrows():
-            try:
-                name = row["name"].strip()
-                if not name:  # 跳过空行
-                    continue
-                size_str = row["size"]
-                file_count_str = row["file_count"]
-                torrent_id_str = str(row["torrent_id"])
-                self._torrent_data[f"{name}_{file_count_str}"] = {
-                    "size": size_str if size_str else 0,
-                    "file_count": file_count_str if file_count_str else 0,
-                    "torrent_id": torrent_id_str if torrent_id_str else "",
-                }
-                row_count += 1
-            except Exception as e:
-                logger.warning(f"处理第{row_count}行数据时出错: {row} {e}")
+        with open(data_path, "r", encoding="utf-8") as f:
+            # 尝试不同的分隔符
+            reader = csv.DictReader(f, delimiter="\t")
+            # 读取数据
+            for row in reader:
+                try:
+                    # 使用原始列名获取数据
+                    name = row["name"].strip()
+                    if not name:  # 跳过空行
+                        continue
+
+                    # 处理可能为空的字段
+                    size_str = row["size"].strip()
+                    file_count_str = row["file_count"].strip()
+                    torrent_id_str = row["torrent_id"].strip()
+
+                    self._torrent_data[f"{name}_{file_count_str}"] = {
+                        "size": int(size_str) if size_str else 0,
+                        "file_count": int(file_count_str) if file_count_str else 0,
+                        "torrent_id": torrent_id_str if torrent_id_str else "",
+                    }
+                    row_count += 1
+
+                except Exception as e:
+                    logger.warning(f"处理第{row_count+2}行数据时出错: {row} {e}")
         logger.info(f"成功加载 {len(self._torrent_data)} 条种子数据")
 
     def __get_directory_info(self, dir_path: Path) -> Tuple[int, int]:
@@ -635,3 +647,14 @@ class GreenLeaf(_PluginBase):
                 self._success_caches.add(id)
         except Exception as e:
             logger.error(f"检查缓失败 {comment} {str(e)}")
+
+    def __data_file_exist(self):
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        rar_path = os.path.join(
+            current_dir, f"torrent_data_{self._match_torrent_id_col}.rar"
+        )
+        if not os.path.exists(rar_path):
+            return False
+        ## 解压rar文件
+        Archive(rar_path).extractall(current_dir)
+        return True
