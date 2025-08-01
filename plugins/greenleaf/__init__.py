@@ -30,7 +30,7 @@ class GreenLeaf(_PluginBase):
     # 插件图标
     plugin_icon = "Vscode_A.png"
     # 插件版本
-    plugin_version = "1.1.5"
+    plugin_version = "1.1.6"
     # 插件作者
     plugin_author = "xingxing"
     # 作者主页
@@ -651,7 +651,7 @@ class GreenLeaf(_PluginBase):
     def __data_file_exist(self):
         current_dir = os.path.dirname(os.path.abspath(__file__))
         rar_path = os.path.join(
-            current_dir, f"torrent_data_{self._match_torrent_id_col}.rar"
+            current_dir, f"torrent_data_{self._match_torrent_id_col}.zip"
         )
         if not os.path.exists(rar_path):
             return False
